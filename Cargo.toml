@@ -9,3 +9,4 @@ nuklear-rust = {version = "~0.5", features = ["rust_allocator"]}
 nuklear-backend-gdi = {version = "~0.2", features = ["piston_image"]}
 winapi = {version = "~0.3", features = ["windef", "minwindef", "winuser", "winbase", "wingdi"]}
 regex = "1"
+lazy_static = "1.2"

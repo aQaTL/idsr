@@ -4,6 +4,8 @@ extern crate nuklear;
 extern crate nuklear_backend_gdi;
 extern crate winapi;
 extern crate regex;
+#[macro_use]
+extern crate lazy_static;
 
 use nuklear::{Color, Context, Flags};
 use nuklear as nk;
@@ -22,14 +24,11 @@ fn main() {
 
 	let mut buf: [u8; 1000] = [0; 1000];
 
-	let re = Regex::new(r"(\d+)([+,-])?/?(\d+)?([+,-])?").unwrap();
-
 	let mut state = State {
 		input_buf: &mut buf[..],
 		input_buf_len: 0,
 		last_buf_len: 0,
 		avg: None,
-		re,
 	};
 
 	loop {
@@ -49,7 +48,6 @@ struct State<'a> {
 	input_buf_len: i32,
 	last_buf_len: i32,
 	avg: Option<f64>,
-	re: Regex,
 }
 
 fn layout(ctx: &mut Context, dr: &mut Drawer, state: &mut State) {
@@ -73,7 +71,7 @@ fn layout(ctx: &mut Context, dr: &mut Drawer, state: &mut State) {
 				&state.input_buf[0..(state.input_buf_len as usize)])
 		};
 
-		state.avg = calc_marks_average(&state.re, text);
+		state.avg = calc_marks_average(text);
 		state.last_buf_len = state.input_buf_len;
 	}
 
@@ -86,11 +84,14 @@ fn layout(ctx: &mut Context, dr: &mut Drawer, state: &mut State) {
 	ctx.end();
 }
 
-fn calc_marks_average(re: &Regex, input: &str) -> Option<f64> {
-	let tokens = input.split(" ").collect::<Vec<&str>>();
-	let mut nums: Vec<f64> = Vec::with_capacity(tokens.len());
+fn calc_marks_average(input: &str) -> Option<f64> {
+	let mut nums: Vec<f64> = Vec::new();
 
-	for capture in re.captures_iter(input) {
+	lazy_static! {
+		static ref RE: Regex = Regex::new(r"(\d+)([+,-])?/?(\d+)?([+,-])?").unwrap();
+	}
+
+	for capture in RE.captures_iter(input) {
 		let num = capture.get(1);
 		let sign = capture.get(2);
 		let num_corrected = capture.get(3);
