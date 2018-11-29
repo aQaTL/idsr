@@ -18,7 +18,7 @@ mod utils;
 fn main() {
 	let mut allo = nk::Allocator::new_vec();
 	let (mut dr, mut ctx, font) = bundle(
-		"idsr", 300, 100, "Segoe UI", 16, &mut allo,
+		"idsr", 400, 600, "Segoe UI", 16, &mut allo,
 	);
 	let clear_color: Color = utils::color_from_hex(0xc47fef);
 
@@ -28,7 +28,8 @@ fn main() {
 		input_buf: &mut buf[..],
 		input_buf_len: 0,
 		last_buf_len: 0,
-		avg: None,
+		avgs: None,
+		skip_corrected: false,
 	};
 
 	loop {
@@ -47,7 +48,8 @@ struct State<'a> {
 	input_buf: &'a mut [u8],
 	input_buf_len: i32,
 	last_buf_len: i32,
-	avg: Option<f64>,
+	avgs: Option<Vec<f64>>,
+	skip_corrected: bool,
 }
 
 fn layout(ctx: &mut Context, dr: &mut Drawer, state: &mut State) {
@@ -61,30 +63,51 @@ fn layout(ctx: &mut Context, dr: &mut Drawer, state: &mut State) {
 		panic!("ctx.begin returned false");
 	}
 
-	ctx.layout_row_dynamic(32f32, 1);
-	ctx.edit_string(nk::EditType::NK_EDIT_FIELD as Flags,
+	ctx.layout_row_dynamic(220f32, 1);
+	ctx.edit_string(nk::EditType::NK_EDIT_BOX as Flags,
 					&mut state.input_buf, &mut state.input_buf_len, None);
 
-	if state.input_buf_len != state.last_buf_len {
-		let text: &str = unsafe {
-			std::str::from_utf8_unchecked(
-				&state.input_buf[0..(state.input_buf_len as usize)])
-		};
+	ctx.layout_row_dynamic(20f32, 1);
+	if ctx.checkbox_text("Nie licz poprawek", &mut !state.skip_corrected) {
+		state.skip_corrected = !state.skip_corrected;
+		state.recalc();
+	}
 
-		state.avg = calc_marks_average(text);
+	if state.input_buf_len != state.last_buf_len {
+		state.recalc();
 		state.last_buf_len = state.input_buf_len;
 	}
 
-	if let Some(avg) = state.avg {
-		ctx.layout_row_dynamic(32f32, 1);
-		ctx.text(format!("Średnia: {:.2}", avg).as_str(),
+	if let Some(avgs) = &state.avgs {
+		let mut sum = 0.0;
+		for (idx, avg) in avgs.iter().enumerate() {
+			ctx.layout_row_dynamic(22f32, 1);
+			ctx.text(format!("{}: {:.2}", idx + 1, avg).as_str(),
+					 nk::TextAlignment::NK_TEXT_CENTERED as Flags);
+			sum += avg;
+		}
+		ctx.layout_row_dynamic(22f32, 1);
+		ctx.text(format!("Średnia wszystkich: {:.2}", sum / avgs.len() as f64).as_str(),
 				 nk::TextAlignment::NK_TEXT_CENTERED as Flags);
 	}
 
 	ctx.end();
 }
 
-fn calc_marks_average(input: &str) -> Option<f64> {
+impl<'a> State<'a> {
+	fn recalc(self: &mut Self) {
+		let text: &str = unsafe {
+			std::str::from_utf8_unchecked(
+				&self.input_buf[0..(self.input_buf_len as usize)])
+		};
+
+		let new_avgs = text.lines().filter_map(|x| calc_marks_average(x, self.skip_corrected))
+			.collect::<Vec<f64>>();
+		self.avgs = if new_avgs.len() == 0 { None } else { Some(new_avgs) };
+	}
+}
+
+fn calc_marks_average(input: &str, skip_corrected: bool) -> Option<f64> {
 	let mut nums: Vec<f64> = Vec::new();
 
 	lazy_static! {
@@ -130,7 +153,11 @@ fn calc_marks_average(input: &str) -> Option<f64> {
 				}
 			}
 
-			nums.push((num + num_corrected) as f64 / 2.0);
+			if skip_corrected {
+				nums.push(num_corrected);
+			} else {
+				nums.push((num + num_corrected) as f64 / 2.0);
+			}
 		}
 	}
 
